@@ -1,0 +1,343 @@
+var timeZone="Asia/Bangkok";
+
+var dateTimeFormat="dd/MM/yyyy, HH:mm:ss";
+var logSpreadSheetId="";
+var attendanceLogSheetName="attendance log";
+var defaultTerminalName="headquarter";
+var mainTabName="main tab";
+
+var ss = SpreadsheetApp.openById('1k06d4fCd-XevkxeZxL0Ms6p0dMcopYRUZ2dg9YIW0gY')
+var sheet = ss.getSheetByName('main tab')
+
+// function doPost(e) {
+//   var action = e.parameter.action
+//   if (action == 'addUser') {
+//     return addUser(e)
+//   }
+// }
+
+// function addUser(e) {
+//   var user = JSON.parse(e.postData.contents)
+//   sheet.appendRow([user.name, user.nickName, user.phone, user.email])
+//   return ContentService.createTextOutput("success").setMimeType(ContentService.MimeType.TEXT)
+// }
+
+//------------------------ตรวจสอบการอยู่ในพื้นที่อันตราย--------------------------------------------
+function checkDangerZone() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var mainSheet = ss.getSheetByName('Main tab');
+  var zoneSheet = ss.getSheetByName('ZONE');
+  var stdDataSheet = ss.getSheetByName('STD_DATA');
+
+  var lastRow = mainSheet.getLastRow();
+  for (var i = lastRow; i > 0; i--) {
+    var lastData = mainSheet.getRange('A' + i + ':D' + i).getValues()[0];
+    var studentID = lastData[1];
+    var room = lastData[3].toLowerCase();
+
+    // Get student name and surname from STD_DATA sheet
+    var stdData = stdDataSheet.getRange('A:C').getValues();
+    var studentName = "";
+    var studentSurname = "";
+    for (var j = 0; j < stdData.length; j++) {
+      if (stdData[j][0] == studentID) {
+        studentName = stdData[j][1];
+        studentSurname = stdData[j][2];
+        break;
+      }
+    }
+
+    var zoneData = zoneSheet.getRange('A:B').getValues();
+    var zoneDict = {};
+    zoneData.forEach(function(row) {
+      zoneDict[row[0].toLowerCase()] = row[1].toUpperCase();
+    });
+
+    if (room in zoneDict && zoneDict[room] == "RED") {
+      var entryTime = mainSheet.getRange('E' + i).getValue();
+      var currentTime = new Date();
+
+      // If entry time is more than 2 minutes ago
+      if (entryTime && (currentTime - entryTime) / (1000 * 60) >= 1) {
+        var formattedTime = Utilities.formatDate(entryTime, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm:ss');
+        var message = 'อยู่ในพื้นที่อันตราย!! \n' +
+                      'เวลา: ' + formattedTime + '\n' +
+                      'ชื่อ: ' + studentName + ' ' + studentSurname + '\n' +
+                      'ห้อง: ' + room.toUpperCase();
+
+        var lineNotifyToken = 'cHkCTUHh1QpCzU9kEPh2L2lSu20gjsB3kIWaAYImNWz';
+        var lineNotifyUrl = 'https://notify-api.line.me/api/notify';
+        var headers = {
+          'Authorization': 'Bearer ' + lineNotifyToken
+        };
+        var payload = {
+          'message': message
+        };
+        var options = {
+          'method': 'post',
+          'headers': headers,
+          'payload': payload
+        };
+        UrlFetchApp.fetch(lineNotifyUrl, options);
+      }
+    }
+  }
+}
+
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  
+  ui.createMenu('Anyboards Menu')
+  
+  // can be deleted after initialization
+  .addItem('Initial Setup', 'initialSetup')
+  .addItem('Add New UIDs', 'addNewUIDsFromAttendanceLogUiHandler')
+  .addItem('Add One Selected UID', 'addOneSelectedUID')
+  .addToUi();      
+      
+}
+
+function addOneSelectedUID()
+{
+  var tabName=SpreadsheetApp.getActiveSheet().getName();
+  if(tabName!=attendanceLogSheetName)
+  {
+    SpreadsheetApp.getUi().alert('It Shoud be '+ attendanceLogSheetName+' sheet');
+  }
+  var row=SpreadsheetApp.getActiveSheet().getActiveCell().getRow();
+  var col=SpreadsheetApp.getActiveSheet().getActiveCell().getColumn();
+  
+    addNewUIDsFromAttendanceLog(row);
+}
+
+function addNewUIDsFromAttendanceLogUiHandler()
+{
+  var ui = SpreadsheetApp.getUi();
+  var response = ui.alert('All new Uids from '+attendanceLogSheetName+' will be added to the main tab', 'Are you sure?', ui.ButtonSet.YES_NO);
+
+// Process the user's response.
+if (response == ui.Button.YES) {
+  addNewUIDsFromAttendanceLog();
+} 
+}
+
+
+function addNewUIDsFromAttendanceLog(row)
+{
+  
+  var mainTab=getMainSheet();
+  var data=mainTab.getRange(2,1,mainTab.getLastRow(),1).getValues();
+  var registeredUIDs=[];
+  data.forEach(x=>registeredUIDs.push(x[0]));
+  
+  registeredUIDs=[...new Set(registeredUIDs)]; //distinct 
+
+  
+  var attendanceSheet=getAttendanceLogSheet();
+  
+  var data;
+  if(row)
+    data=attendanceSheet.getRange(row,1,row,2).getValues();
+  else
+  data=attendanceSheet.getRange(2,1,attendanceSheet.getLastRow(),2).getValues();
+  var arr=[];
+  
+  for(var i=0; i<data.length; i++)
+  {
+    var visit=[];
+    var uid=data[i][1];
+    if(!registeredUIDs.includes(uid))
+       {
+        visit.date=data[i][0];
+        visit.uid=uid;
+        arr.push(visit)
+        registeredUIDs.push(uid);
+       }
+  }
+
+  var startRow=mainTab.getLastRow()+1;
+  data=[];
+  for(var i=arr.length-1; i>=0; i--) // in reverse for proper last visit
+  {
+// 'UID','STD_ID','SCHOOL','ZONE', 'LAST_CHECK','LAST_TERMINAL','TERMINAL'
+    var row=[];
+    row[0]=arr[i].uid;
+    row[1]='Insert STD_ID '+(startRow-2+arr.length-i);
+    row[2]='TRUE';
+    row[3]='CHECK CARD';
+    row[4]=arr[i].date;
+    row[5]='CHECK CARD';
+    row[6]='CHECK CARD';
+    data.push(row);
+    
+  }
+  if(data.length>0)
+  mainTab.getRange(startRow, 1,data.length,data[0].length).setValues(data);
+  
+}
+
+function addNewUID(uidset)
+{
+  var mainTab=getMainSheet();
+  var data=mainTab.getRange(2,1,mainTab.getLastRow(),1).getValues();
+  var data=uidset;
+  var startRow=mainTab.getLastRow()+1;
+  data=[];
+  var row=[];
+  row[0]=uidset;
+  row[1]='Insert STD_ID';
+  row[2]='NEWCARD';
+  row[3]='NEWCARD';
+  row[4]='NEWCARD';
+  row[5]='NEWCARD';
+  row[6]='NEWCARD';
+  data.push(row);
+  if(data.length>0)
+  mainTab.getRange(startRow, 1,data.length,data[0].length).setValues(data);
+}
+
+// creates sheets and columns
+function initialSetup()
+{
+
+  if(!getAttendanceLogSheet())
+  {
+  var mainSheet=SpreadsheetApp.getActiveSheet().setName(mainTabName);
+  var rowData = ['UID','STD_ID','SCHOOL','ZONE', 'LAST_CHECK','LAST_TERMINAL','TERMINAL'];
+  mainSheet.getRange(1, 1,1,rowData.length).setValues([rowData]);
+  mainSheet.setColumnWidths(1, rowData.length+1,150);
+  
+  rowData=['Date Time','UID','Name','Result','Terminal'];
+  var attendanceSheet=SpreadsheetApp.getActiveSpreadsheet().insertSheet(attendanceLogSheetName);
+  attendanceSheet.getRange(1, 1,1,rowData.length).setValues([rowData]);
+    attendanceSheet.setColumnWidths(1, rowData.length+1,150);
+  
+  }
+
+  else{
+    
+    var ui = SpreadsheetApp.getUi();
+    ui.alert('The spreadsheet system has already been initialized');
+  }
+}
+
+
+function doGet(e) {
+  //default values
+      var access="Insert STD_ID";
+      // var text='go home';
+      var name='No Information';
+  
+  var dateTime=Utilities.formatDate(new Date(), timeZone, dateTimeFormat);
+  // var json;
+  // var error="idk";
+    Logger.log(JSON.stringify(e)); // view parameters
+    var result = 'Ok'; // assume success
+    if (e.parameter == 'undefined') {
+        result = 'No Parameters';
+    } else {
+
+        var uid = '';
+        // var onlyPing=false;
+        var terminal = defaultTerminalName;
+        // var error = '';
+        for (var param in e.parameter) {
+
+            var value = stripQuotes(e.parameter[param]);
+
+            switch (param) {
+                case 'uid':
+                    uid = value;
+                    break;
+                case 'terminal':
+                    terminal = value;
+                    break;
+                case 'addNew':
+                    uid = 'NEWCARD';
+                    terminal = "NEWCARD";
+                    newset = value;
+                    addNewUID(newset);
+                    break;      
+                default:
+                    result = "unsupported parameter";
+            }
+        }
+      
+     
+      var mainSheet=getMainSheet();
+     
+    var data = mainSheet.getDataRange().getValues();
+    if (data.length == 0)
+        return;
+        //checking if uid is known
+    for (var i = 0; i < data.length; i++) {
+// 'UID','STD_ID','SCHOOL','ZONE', 'LAST_CHECK','LAST_TERMINAL','TERMINAL'
+        if (data[i][0] ==uid)
+        {
+          name=data[i][1];
+          access=data[i][2];
+          // =IF(F2="In Gate_1","Room1")
+          text='=IF(F'+[i+1]+'="Out School",FALSE,TRUE)';
+// =IF(C2=FALSE,"Out School",IF(F2="In Gate_Main","Courtyard",IF(F2="In Gate_1","Room1",IF(F2="In Gate_2","Room2",IF(F2="In Gate_3","Meeting Room",IF(F2="In Gate_4","Male toilet",IF(F2="In Gate_5","Female toilet")))))))
+          var zone = '=IF(C'+[i+1]+'=FALSE,"Out School",IF(F'+[i+1]+'="In Gate_1","Courtyard",IF(F'+[i+1]+'="In Gate_2","Playground",IF(F'+[i+1]+'="In Gate_3","Parking",IF(F'+[i+1]+'="In Gate_4","Room1",IF(F'+[i+1]+'="In Gate_5","Toilet",IF(F'+[i+1]+'="In Gate_6","Pool")))))))'
+          mainSheet.getRange(i+1,3).setValue(text);
+          mainSheet.getRange(i+1,4).setValue(zone);
+          mainSheet.getRange(i+1,5).setValue(dateTime);
+          if(mainSheet.getRange(i+1,6).getValue()=="Out School"){
+            if(terminal=="Gate_1"){
+              mainSheet.getRange(i+1,6).setValue("In Gate_1");
+              mainSheet.getRange(i+1,7).setValue("");
+              break;
+            }
+          }
+          var checklast=mainSheet.getRange(i+1,7).getValue();
+          if(mainSheet.getRange(i+1,6).getValue()=="In Gate_1"){
+            checklast = "Gate_1";
+          }
+          // mainSheet.getRange(i+1,6).setValue(checklast);
+          if(checklast==terminal){
+            // mainSheet.getRange(i+1,6).setValue("Out "+checklast);
+            mainSheet.getRange(i+1,6).setValue("In Gate_1");
+          }
+          else mainSheet.getRange(i+1,6).setValue("In "+terminal);
+          mainSheet.getRange(i+1,7).setValue(terminal);
+          // =IF(AND((F2="In Gate_Main"),(G2="Gate_Main")),"FALSE","TRUE")
+          if(mainSheet.getRange(i+1,6).getValue()=="In Gate_1"){
+            if(mainSheet.getRange(i+1,7).getValue()=="Gate_1"){
+              mainSheet.getRange(i+1,6).setValue("Out School");
+              mainSheet.getRange(i+1,7).setValue("");
+            }
+          }
+          break;
+        }
+       
+    }
+      //inserting record to attendence log
+      var attendanceSheet=getAttendanceLogSheet();
+      data=[dateTime,uid,name,access,terminal];
+      attendanceSheet.getRange(attendanceSheet.getLastRow()+1,1,1,data.length).setValues([data]);
+       }
+
+     
+  result=access+":"+name+":"+text;
+  return ContentService.createTextOutput(result);
+
+}
+
+function getAttendanceLogSheet()
+{
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(attendanceLogSheetName);
+}
+
+function getMainSheet()
+{
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(mainTabName);
+}
+
+
+/**
+ * Remove leading and trailing single or double quotes
+ */
+function stripQuotes(value) {
+    return value.replace(/^["']|['"]$/g, "");
+}
