@@ -1,0 +1,63 @@
+html,
+body {
+  height: 100%;
+  font-family: "Kanit", sans-serif;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.form-signin {
+  width: 100%;
+  max-width: 330px;
+  padding: 15px;
+  margin: 50px auto;
+  background-color: #f7f7f7;
+  border: 1px solid #ced4da;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  animation: slideDown 0.5s ease; /* เพิ่ม animation โดยใช้ชื่อ keyframes 'slideDown' */
+}
+
+
+.form-signin h1 {
+  margin-bottom: 20px; /* กำหนดระยะห่างของชื่อแบบฟอร์มด้านล่าง */
+}
+
+.form-signin .form-floating:focus-within {
+  z-index: 2;
+}
+
+.form-signin input[type="email"],
+.form-signin input[type="password"] {
+  margin-bottom: 10px;
+  border-radius: 5px; /* เปลี่ยนรูปร่างของช่อง input */
+}
+
+.form-signin button {
+  border-radius: 5px; /* เปลี่ยนรูปร่างของปุ่ม */
+}
+
+.checkbox {
+  margin-bottom: 10px; /* กำหนดระยะห่างของ checkbox */
+}
+
+.mt-5 {
+  margin-top: 20px; /* กำหนดระยะห่างด้านบนของตัวหนังสือล่างฟอร์ม */
+}
+
+.mb-3 {
+  margin-bottom: 15px; /* กำหนดระยะห่างด้านล่างของตัวหนังสือบนฟอร์ม */
+}
+
+.text-muted {
+  color: #6c757d; /* เปลี่ยนสีของตัวหนังสือล่างฟอร์ม */
+}
